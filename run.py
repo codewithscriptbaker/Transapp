@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -65,6 +66,32 @@ def ensure_backend_deps() -> bool:
     return True
 
 
+def port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def ensure_ports_available() -> bool:
+    busy: list[int] = []
+    if port_in_use(8000):
+        busy.append(8000)
+    if port_in_use(3000):
+        busy.append(3000)
+
+    if not busy:
+        return True
+
+    ports = ", ".join(str(port) for port in busy)
+    print(
+        f"Error: port(s) {ports} already in use.\n"
+        "Stop the old Transapp process (Ctrl+C), then run `python run.py` again.\n"
+        "If pages still 404, delete frontend/.next and restart.",
+        file=sys.stderr,
+    )
+    return False
+
+
 def start_backend() -> subprocess.Popen[bytes]:
     python = backend_python()
     command = [
@@ -72,7 +99,7 @@ def start_backend() -> subprocess.Popen[bytes]:
         "-m",
         "uvicorn",
         "app.main:app",
-        "--reload",
+        # "--reload",
         "--host",
         "0.0.0.0",
         "--port",
@@ -123,6 +150,8 @@ def main() -> int:
     if not ensure_frontend_deps():
         return 1
     if not ensure_backend_deps():
+        return 1
+    if not ensure_ports_available():
         return 1
 
     signal.signal(signal.SIGINT, on_signal)

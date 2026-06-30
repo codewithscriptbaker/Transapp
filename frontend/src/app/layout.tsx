@@ -6,6 +6,7 @@ import { AccountMenu } from "@/components/account-menu"
 import { AppToaster } from "@/components/app-toaster"
 import { ModeToggle } from "@/components/mode-toggle"
 import { ThemeProvider } from "@/components/theme-provider"
+import { TransappLogo } from "@/components/transapp-logo"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,7 +20,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Transapp",
-  description: "Translation app",
+  description: "Translation and transcription app",
+  icons: {
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/logo.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({
@@ -48,9 +53,10 @@ export default function RootLayout({
           <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
             <Link
               href="/"
-              className="text-foreground text-lg font-semibold tracking-tight transition-opacity hover:opacity-85"
+              className="transition-opacity hover:opacity-85"
+              aria-label="Transapp home"
             >
-              Transapp
+              <TransappLogo />
             </Link>
             <div className="flex items-center gap-2 sm:gap-3">
               <ModeToggle />

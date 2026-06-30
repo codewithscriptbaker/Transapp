@@ -67,3 +67,7 @@ Desktop.ini
 
 # SWC cache (if present)
 .swc/
+
+# Local SQLite database
+backend/data/
+data/

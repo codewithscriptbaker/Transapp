@@ -16,16 +16,37 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
-import { isSupabaseConfigured } from "@/lib/auth"
+import {
+  clearStoredToken,
+  fetchCurrentUser,
+  getStoredToken,
+  isSupabaseConfigured,
+  usesLocalAuth,
+} from "@/lib/auth"
 
 export function AccountMenu() {
   const router = useRouter()
   const [email, setEmail] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const configured = isSupabaseConfigured()
+  const supabaseEnabled = isSupabaseConfigured()
+  const localEnabled = usesLocalAuth()
 
   React.useEffect(() => {
-    if (!configured) {
+    if (localEnabled) {
+      const token = getStoredToken()
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+
+      void fetchCurrentUser(token).then((user) => {
+        setEmail(user?.email ?? null)
+        setIsLoading(false)
+      })
+      return
+    }
+
+    if (!supabaseEnabled) {
       setIsLoading(false)
       return
     }
@@ -44,10 +65,18 @@ export function AccountMenu() {
     })
 
     return () => subscription.unsubscribe()
-  }, [configured])
+  }, [localEnabled, supabaseEnabled])
 
   const onSignOut = React.useCallback(async () => {
-    if (!configured) return
+    if (localEnabled) {
+      clearStoredToken()
+      toast.success("Signed out")
+      router.push("/login")
+      router.refresh()
+      return
+    }
+
+    if (!supabaseEnabled) return
 
     const supabase = createClient()
     const { error } = await supabase.auth.signOut()
@@ -58,7 +87,7 @@ export function AccountMenu() {
     toast.success("Signed out")
     router.push("/login")
     router.refresh()
-  }, [configured, router])
+  }, [localEnabled, router, supabaseEnabled])
 
   if (isLoading) {
     return (

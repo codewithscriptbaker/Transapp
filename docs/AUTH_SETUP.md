@@ -1,6 +1,36 @@
-# Authentication setup (Supabase)
+# Authentication setup
 
-Transapp uses **Supabase Auth** for email/password and **Google** login.
+Transapp supports **optional Supabase Auth** or **local SQLite auth** (default when Supabase is not configured).
+
+## Auth modes
+
+| `AUTH_PROVIDER` | Behavior |
+|-----------------|----------|
+| `auto` (default) | Supabase if URL + JWT secret are set; otherwise local SQLite |
+| `local` | Email/password stored in SQLite (`data/transapp.db`) |
+| `supabase` | Supabase only |
+
+## Local auth (no Supabase)
+
+**`backend/.env`**
+```env
+AUTH_PROVIDER=auto
+JWT_SECRET=your-random-secret-here
+SQLITE_DB_PATH=data/transapp.db
+```
+
+**`frontend/.env`** — leave Supabase vars unset:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Sign up at `/signup`, then sign in. Users are stored in SQLite.
+
+---
+
+## Supabase (optional)
+
+Transapp can use **Supabase Auth** for email/password and **Google** login.
 
 ## 1. Create a Supabase project
 

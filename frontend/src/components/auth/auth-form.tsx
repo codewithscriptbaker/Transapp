@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -15,34 +15,66 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
-import { isSupabaseConfigured } from "@/lib/auth"
+import {
+  isSupabaseConfigured,
+  localLogin,
+  localSignUp,
+  setStoredToken,
+  usesLocalAuth,
+} from "@/lib/auth"
 
 type AuthFormProps = {
   mode: "login" | "signup"
 }
 
+function safeRedirectPath(next: string | null): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/"
+  if (next.startsWith("/login") || next.startsWith("/signup")) return "/"
+  return next
+}
+
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = safeRedirectPath(searchParams.get("next"))
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [isLoading, setIsLoading] = React.useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false)
+  const supabaseEnabled = isSupabaseConfigured()
+  const localEnabled = usesLocalAuth()
 
   const onEmailSubmit = React.useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault()
-
-      if (!isSupabaseConfigured()) {
-        toast.error("Supabase is not configured", {
-          description: "Add NEXT_PUBLIC_SUPABASE_URL and ANON_KEY to frontend/.env",
-        })
-        return
-      }
-
       setIsLoading(true)
-      const supabase = createClient()
 
       try {
+        if (localEnabled) {
+          if (mode === "signup") {
+            const data = await localSignUp(email, password)
+            setStoredToken(data.access_token)
+            toast.success("Account created")
+            router.push(redirectTo)
+            router.refresh()
+            return
+          }
+
+          const data = await localLogin(email, password)
+          setStoredToken(data.access_token)
+          toast.success("Welcome back")
+          router.push(redirectTo)
+          router.refresh()
+          return
+        }
+
+        if (!supabaseEnabled) {
+          toast.error("Authentication is not configured")
+          return
+        }
+
+        const supabase = createClient()
+
         if (mode === "signup") {
           const { error } = await supabase.auth.signUp({ email, password })
           if (error) throw error
@@ -56,7 +88,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         toast.success("Welcome back")
-        router.push("/")
+        router.push(redirectTo)
         router.refresh()
       } catch (error) {
         toast.error(mode === "signup" ? "Sign up failed" : "Login failed", {
@@ -66,12 +98,12 @@ export function AuthForm({ mode }: AuthFormProps) {
         setIsLoading(false)
       }
     },
-    [email, mode, password, router]
+    [email, localEnabled, mode, password, redirectTo, router, supabaseEnabled]
   )
 
   const onGoogleSignIn = React.useCallback(async () => {
-    if (!isSupabaseConfigured()) {
-      toast.error("Supabase is not configured")
+    if (!supabaseEnabled) {
+      toast.error("Google sign-in requires Supabase configuration")
       return
     }
 
@@ -82,7 +114,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
         },
       })
       if (error) throw error
@@ -92,7 +124,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       })
       setIsGoogleLoading(false)
     }
-  }, [])
+  }, [redirectTo, supabaseEnabled])
 
   return (
     <Card className="mx-auto w-full max-w-md border-border/80 shadow-sm">
@@ -101,31 +133,39 @@ export function AuthForm({ mode }: AuthFormProps) {
           {mode === "login" ? "Sign in" : "Create account"}
         </CardTitle>
         <CardDescription>
-          {mode === "login"
-            ? "Sign in with email or Google to use translation."
-            : "Create an account to save your translations."}
+          {localEnabled
+            ? mode === "login"
+              ? "Sign in with your email and password."
+              : "Create a local account stored in the app database."
+            : mode === "login"
+              ? "Sign in with email or Google to use translation."
+              : "Create an account to save your translations."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full gap-2"
-          onClick={onGoogleSignIn}
-          disabled={isGoogleLoading || isLoading}
-        >
-          <GoogleIcon />
-          {isGoogleLoading ? "Redirecting…" : "Continue with Google"}
-        </Button>
+        {supabaseEnabled ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2"
+              onClick={onGoogleSignIn}
+              disabled={isGoogleLoading || isLoading}
+            >
+              <GoogleIcon />
+              {isGoogleLoading ? "Redirecting…" : "Continue with Google"}
+            </Button>
 
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card text-muted-foreground px-2">or</span>
-          </div>
-        </div>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card text-muted-foreground px-2">or</span>
+              </div>
+            </div>
+          </>
+        ) : null}
 
         <form onSubmit={onEmailSubmit} className="space-y-3">
           <div className="space-y-1.5">
@@ -172,14 +212,28 @@ export function AuthForm({ mode }: AuthFormProps) {
           {mode === "login" ? (
             <>
               No account?{" "}
-              <Link href="/signup" className="text-foreground font-medium underline-offset-4 hover:underline">
+              <Link
+                href={
+                  redirectTo === "/"
+                    ? "/signup"
+                    : `/signup?next=${encodeURIComponent(redirectTo)}`
+                }
+                className="text-foreground font-medium underline-offset-4 hover:underline"
+              >
                 Sign up
               </Link>
             </>
           ) : (
             <>
               Already have an account?{" "}
-              <Link href="/login" className="text-foreground font-medium underline-offset-4 hover:underline">
+              <Link
+                href={
+                  redirectTo === "/"
+                    ? "/login"
+                    : `/login?next=${encodeURIComponent(redirectTo)}`
+                }
+                className="text-foreground font-medium underline-offset-4 hover:underline"
+              >
                 Sign in
               </Link>
             </>

@@ -31,9 +31,18 @@ class Settings(BaseSettings):
     # Audio upload limits
     max_audio_size_mb: int = 25
 
-    # Supabase Auth (JWT verification)
+    # Auth provider: "auto" | "supabase" | "local"
+    # auto — use Supabase when URL + JWT secret are set, otherwise SQLite local auth
+    auth_provider: str = "auto"
+
+    # Supabase Auth (optional — JWT verification)
     supabase_url: str = ""
     supabase_jwt_secret: str = ""
+
+    # Local auth (SQLite + JWT) — used when Supabase is not configured
+    sqlite_db_path: str = "data/transapp.db"
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_hours: int = 168
 
     host: str = "0.0.0.0"
     port: int = 8000
@@ -54,6 +63,31 @@ class Settings(BaseSettings):
     @property
     def max_audio_size_bytes(self) -> int:
         return self.max_audio_size_mb * 1024 * 1024
+
+    @property
+    def supabase_configured(self) -> bool:
+        url = self.supabase_url.strip()
+        secret = self.supabase_jwt_secret.strip()
+        if not url or not secret:
+            return False
+        placeholders = {
+            "https://your-project.supabase.co",
+            "your-jwt-secret",
+        }
+        if url in placeholders or secret in placeholders:
+            return False
+        return ".supabase.co" in url
+
+    @property
+    def auth_mode(self) -> str:
+        provider = self.auth_provider.strip().lower()
+        if provider == "supabase":
+            return "supabase"
+        if provider == "local":
+            return "local"
+        if self.supabase_configured:
+            return "supabase"
+        return "local"
 
 
 settings = Settings()

@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
+from app.services.local_auth import decode_access_token, get_user_by_id
 
 security = HTTPBearer(auto_error=False)
 
@@ -19,7 +20,7 @@ def _decode_supabase_token(token: str) -> AuthUser:
     if not settings.supabase_jwt_secret:
         raise HTTPException(
             status_code=503,
-            detail="Authentication is not configured on the server (SUPABASE_JWT_SECRET).",
+            detail="Supabase authentication is not configured (SUPABASE_JWT_SECRET).",
         )
 
     try:
@@ -39,10 +40,31 @@ def _decode_supabase_token(token: str) -> AuthUser:
     return AuthUser(id=user_id, email=payload.get("email"))
 
 
+def _decode_local_token(token: str) -> AuthUser:
+    try:
+        user = decode_access_token(token)
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired token.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    record = get_user_by_id(user["id"])
+    if record is None:
+        raise HTTPException(status_code=401, detail="User not found.")
+
+    return AuthUser(id=record["id"], email=record["email"])
+
+
+def _decode_token(token: str) -> AuthUser:
+    if settings.auth_mode == "supabase":
+        return _decode_supabase_token(token)
+    return _decode_local_token(token)
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> AuthUser:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Not authenticated.")
 
-    return _decode_supabase_token(credentials.credentials)
+    return _decode_token(credentials.credentials)
